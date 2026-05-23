@@ -19,7 +19,7 @@ Devvit.addSettings([
     label: 'Gemini API Key',
     helpText: 'Get a free key at aistudio.google.com (1M tokens/month free)',
     isSecret: true,
-    scope: 'installation',
+    scope: 'app',
   },
   {
     type: 'number',
