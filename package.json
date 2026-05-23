@@ -6,7 +6,7 @@
   "scripts": {
     "build": "devvit build",
     "upload": "devvit upload",
-    "playtest": "devvit playtest r/[your-test-subreddit]",
+    "playtest": "devvit playtest r/modsentinel_testing",
     "publish": "devvit publish",
     "lint": "eslint src --ext .ts,.tsx",
     "typecheck": "tsc --noEmit"
