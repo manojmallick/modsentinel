@@ -1,0 +1,19 @@
+{
+  "name": "modsentinel",
+  "version": "0.0.1",
+  "description": "AI-powered mod queue intelligence — scores every post/comment with Gemini before a mod reads it",
+  "scripts": {
+    "build": "devvit build",
+    "upload": "devvit upload",
+    "playtest": "devvit playtest r/[your-test-subreddit]",
+    "publish": "devvit publish",
+    "lint": "eslint src --ext .ts,.tsx"
+  },
+  "devDependencies": {
+    "@devvit/public-api": "0.12.24",
+    "typescript": "^5.3.3",
+    "@typescript-eslint/eslint-plugin": "^7.0.0",
+    "@typescript-eslint/parser": "^7.0.0",
+    "eslint": "^8.57.0"
+  }
+}
