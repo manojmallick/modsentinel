@@ -302,10 +302,16 @@ export function Dashboard(context: Devvit.Context): JSX.Element {
         return b.scores.overall - a.scores.overall;
       });
 
-      // Compute community health score from the full queue
+      // Compute community health score from the full queue.
+      // "Healthy" = AI-scored clean (< 40) OR explicitly approved by a mod.
+      // Removed/spam/auto-removed content counts against health.
+      // Pending items with score ≥ 40 are unknown — also count against health.
       const total = sorted.length;
-      const cleanCount = sorted.filter((i) => i.scores.overall < 40).length;
-      const health = total > 0 ? Math.round((cleanCount / total) * 100) : 100;
+      const healthyCount = sorted.filter(
+        (i) => i.scores.overall < 40 || i.status === 'approved'
+      ).length;
+      // With very few items the metric is noisy — clamp to 100 if queue is empty.
+      const health = total > 0 ? Math.round((healthyCount / total) * 100) : 100;
 
       return JSON.stringify({ queue: sorted, watchlist, health, isMod: true });
     },

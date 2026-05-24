@@ -305,8 +305,10 @@ async function sendDailySummary(context: SchedulerContext): Promise<void> {
   const avgScore = Math.round(
     todayItems.reduce((s, i) => s + i.scores.overall, 0) / totalScored
   );
-  const cleanCount = todayItems.filter((i) => i.scores.overall < 40).length;
-  const healthPct = Math.round((cleanCount / totalScored) * 100);
+  const healthyCount = todayItems.filter(
+    (i) => i.scores.overall < 40 || i.status === 'approved'
+  ).length;
+  const healthPct = Math.round((healthyCount / totalScored) * 100);
 
   // Top violators (removed/spam)
   const violatorMap = new Map<string, number>();
