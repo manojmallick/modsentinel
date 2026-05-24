@@ -2,7 +2,7 @@ import { Devvit, useState, useAsync, useInterval, useChannel } from '@devvit/pub
 import { getQueue, updateStatus, clearActioned, getWatchlist } from './kvStore.js';
 import type { ContentScore, LiveScoreEvent } from './types.js';
 
-const REALTIME_CHANNEL = 'modsentinel:scores';
+const REALTIME_CHANNEL = 'modsentinel_scores'; // colons are invalid in useChannel names
 
 type FilterMode = 'all' | 'critical' | 'pending' | 'shadow' | 'watched';
 

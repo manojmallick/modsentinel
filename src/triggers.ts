@@ -10,7 +10,7 @@ import {
 } from './kvStore.js';
 import type { ContentScore, LiveScoreEvent } from './types.js';
 
-const REALTIME_CHANNEL = 'modsentinel:scores';
+const REALTIME_CHANNEL = 'modsentinel_scores'; // must be [a-zA-Z0-9_] only
 
 /** Fire-and-forget push to all open dashboard windows. Never throws. */
 async function broadcastScore(event: LiveScoreEvent, context: TriggerContext): Promise<void> {
