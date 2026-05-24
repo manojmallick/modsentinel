@@ -573,7 +573,7 @@ export function Dashboard(context: Devvit.Context): JSX.Element {
           </vstack>
 
           <text size="xsmall" color="secondary-plain" alignment="center">
-            ModSentinel v1.1 · Powered by Gemini 2.0 Flash
+            ModSentinel v1.0.0 · Powered by Gemini 2.0 Flash
           </text>
 
         </vstack>
@@ -765,7 +765,7 @@ export function Dashboard(context: Devvit.Context): JSX.Element {
         {/* ── Footer ──────────────────────────────────────────────────────── */}
         <hstack alignment="center" gap="small">
           <text size="xsmall" color="secondary-plain" alignment="center">
-            Powered by Gemini 2.0 Flash · ModSentinel v1.1
+            Powered by Gemini 2.0 Flash · ModSentinel v1.0.0
           </text>
           <spacer grow />
           <text size="xsmall" color="secondary-plain">

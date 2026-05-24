@@ -1,6 +1,6 @@
 {
   "name": "modsentinel-ai",
-  "version": "0.0.4",
+  "version": "1.0.0",
   "description": "AI-powered mod queue intelligence — scores every post/comment with Gemini before a mod reads it",
   "main": "src/main.tsx",
   "scripts": {

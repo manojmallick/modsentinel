@@ -142,9 +142,9 @@ Each queue item shows the author's history at a glance:
 
 Shown in the header: **🏥 94% healthy**
 
-Calculated as: `(items scoring < 40) ÷ total items × 100`
+Calculated as: `(items scoring < 40  OR  mod-approved) ÷ total items × 100`
 
-Refreshes whenever you click ↻. A healthy subreddit typically sits above 80%.
+Items explicitly approved by a moderator count as healthy regardless of AI score. Only removed/spam/pending-high-score content counts against the metric. Refreshes whenever you click ↻. A healthy subreddit typically sits above 80%.
 
 ### Watchlist Management
 
