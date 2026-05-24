@@ -1,6 +1,6 @@
 {
   "name": "modsentinel-ai",
-  "version": "0.0.1",
+  "version": "0.0.0",
   "description": "AI-powered mod queue intelligence — scores every post/comment with Gemini before a mod reads it",
   "main": "src/main.tsx",
   "scripts": {
@@ -17,5 +17,8 @@
     "@typescript-eslint/eslint-plugin": "^7.0.0",
     "@typescript-eslint/parser": "^7.0.0",
     "eslint": "^8.57.0"
-  }
+  },
+  "type": "module",
+  "private": true,
+  "license": "BSD-3-Clause"
 }
