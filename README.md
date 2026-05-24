@@ -219,7 +219,7 @@ modsentinel/
 └── devvit.yaml         — App name + version
 ```
 
-See [ARCHITECTURE.md](./ARCHITECTURE.md) for the full system design.
+See [ARCHITECTURE.md](https://github.com/manojmallick/modsentinel/blob/main/ARCHITECTURE.md) for the full system design.
 
 ---
 
@@ -265,4 +265,4 @@ A: No AI is perfect. ModSentinel is a triage tool that surfaces likely problems 
 
 ## License
 
-[MIT](./LICENSE) — free to use, modify, and deploy on any subreddit.
+[MIT](https://github.com/manojmallick/modsentinel/blob/main/LICENSE) — free to use, modify, and deploy on any subreddit.
