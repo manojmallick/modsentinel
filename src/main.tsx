@@ -3,6 +3,8 @@ import { handlePostCreate, handleCommentCreate } from './triggers.js';
 import { Dashboard } from './dashboard.js';
 import { updateStatus } from './kvStore.js';
 
+console.log('[ModSentinel] App module loaded');
+
 Devvit.configure({
   redditAPI: true,
   kvStore: true,

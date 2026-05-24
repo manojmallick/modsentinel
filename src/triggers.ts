@@ -6,8 +6,6 @@ import type { ContentScore } from './types.js';
 
 const DEFAULT_RULES = ['Be respectful', 'No spam', 'Stay on topic'];
 
-// PostV2.id / CommentV2.id from proto events are base IDs without the t3_/t1_ prefix.
-// Normalise so KV store IDs always match the full thing IDs used by menu-item targetId.
 function toPostId(id: string): string {
   return id.startsWith('t3_') ? id : `t3_${id}`;
 }
@@ -25,7 +23,8 @@ async function isModerator(
       if (mod.username === username) return true;
     }
     return false;
-  } catch {
+  } catch (err) {
+    console.error('[ModSentinel] isModerator check failed:', err);
     return false;
   }
 }
@@ -34,14 +33,24 @@ export async function handlePostCreate(
   event: protos.PostCreate,
   context: TriggerContext
 ): Promise<void> {
+  console.log('[ModSentinel] PostCreate trigger fired');
+
   const post = event.post;
-  if (!post) return;
+  if (!post) {
+    console.log('[ModSentinel] No post in event, skipping');
+    return;
+  }
 
   const subredditName = event.subreddit?.name ?? '';
-  // Username lives on event.author.name (UserV2), not PostV2
   const authorName = event.author?.name ?? 'unknown';
 
-  if (await isModerator(authorName, subredditName, context)) return;
+  console.log(`[ModSentinel] New post: "${post.title}" by u/${authorName} in r/${subredditName}`);
+
+  const isMod = await isModerator(authorName, subredditName, context);
+  if (isMod) {
+    console.log(`[ModSentinel] Skipping — u/${authorName} is a moderator`);
+    return;
+  }
 
   const config = await getSubredditConfig(context);
   const rules = config?.rules?.length ? config.rules : DEFAULT_RULES;
@@ -49,9 +58,16 @@ export async function handlePostCreate(
   const autoFlairThreshold = config?.autoFlairThreshold ?? 80;
   const notifyThreshold = config?.notifyThreshold ?? 90;
 
-  // Body is in `selftext` (proto field name), not `body`
+  console.log('[ModSentinel] Calling Gemini API to score post...');
   const contentText = `Title: ${post.title}\n\nBody: ${post.selftext ?? '(no body)'}`;
   const scores = await scoreContent(contentText, 'post', rules, context);
+
+  console.log(
+    `[ModSentinel] Scores — spam:${scores.spam} violation:${scores.violation} toxicity:${scores.toxicity} overall:${scores.overall}`
+  );
+  if (scores.reasoning) {
+    console.log(`[ModSentinel] Reasoning: ${scores.reasoning}`);
+  }
 
   const contentId = toPostId(post.id);
   const contentScore: ContentScore = {
@@ -68,15 +84,18 @@ export async function handlePostCreate(
   };
 
   await saveScore(contentScore, context);
+  console.log(`[ModSentinel] Saved score for ${contentId}`);
 
   if (scores.overall >= autoRemoveThreshold) {
+    console.log(`[ModSentinel] Auto-removing post (score ${scores.overall} >= threshold ${autoRemoveThreshold})`);
     try {
       await context.reddit.remove(contentId, false);
     } catch (err) {
-      console.error('ModSentinel: auto-remove post failed', err);
+      console.error('[ModSentinel] Auto-remove failed:', err);
     }
     await saveScore({ ...contentScore, status: 'removed' }, context);
   } else if (scores.overall >= autoFlairThreshold) {
+    console.log(`[ModSentinel] Auto-flairing post (score ${scores.overall} >= threshold ${autoFlairThreshold})`);
     try {
       await context.reddit.setPostFlair({
         subredditName,
@@ -84,12 +103,13 @@ export async function handlePostCreate(
         text: '⚠️ Needs Review',
         cssClass: 'needs-review',
       });
-    } catch {
-      // Flair not configured — non-fatal
+    } catch (err) {
+      console.log('[ModSentinel] Flair not configured (non-fatal):', err);
     }
   }
 
   if (scores.overall >= notifyThreshold) {
+    console.log(`[ModSentinel] Sending mod-mail notification (score ${scores.overall})`);
     try {
       await context.reddit.sendPrivateMessage({
         to: `/r/${subredditName}`,
@@ -107,26 +127,40 @@ export async function handlePostCreate(
           .filter(Boolean)
           .join('\n'),
       });
-    } catch {
-      // Mod mail may fail — non-fatal
+    } catch (err) {
+      console.log('[ModSentinel] Mod-mail failed (non-fatal):', err);
     }
   }
+
+  console.log('[ModSentinel] PostCreate handler complete');
 }
 
 export async function handleCommentCreate(
   event: protos.CommentCreate,
   context: TriggerContext
 ): Promise<void> {
+  console.log('[ModSentinel] CommentCreate trigger fired');
+
   const comment = event.comment;
-  if (!comment) return;
+  if (!comment) {
+    console.log('[ModSentinel] No comment in event, skipping');
+    return;
+  }
+
+  console.log(`[ModSentinel] New comment by u/${comment.author}: "${comment.body.slice(0, 60)}"`);
 
   const config = await getSubredditConfig(context);
   const rules = config?.rules?.length ? config.rules : DEFAULT_RULES;
   const autoRemoveThreshold = config?.autoRemoveThreshold ?? 95;
 
+  console.log('[ModSentinel] Calling Gemini API to score comment...');
   const scores = await scoreContent(comment.body, 'comment', rules, context);
-  const contentId = toCommentId(comment.id);
 
+  console.log(
+    `[ModSentinel] Scores — spam:${scores.spam} violation:${scores.violation} toxicity:${scores.toxicity} overall:${scores.overall}`
+  );
+
+  const contentId = toCommentId(comment.id);
   const contentScore: ContentScore = {
     contentId,
     contentType: 'comment',
@@ -140,13 +174,17 @@ export async function handleCommentCreate(
   };
 
   await saveScore(contentScore, context);
+  console.log(`[ModSentinel] Saved comment score for ${contentId}`);
 
   if (scores.toxicity >= 90 || scores.overall >= autoRemoveThreshold) {
+    console.log(`[ModSentinel] Auto-removing comment (toxicity:${scores.toxicity} overall:${scores.overall})`);
     try {
       await context.reddit.remove(contentId, false);
     } catch (err) {
-      console.error('ModSentinel: auto-remove comment failed', err);
+      console.error('[ModSentinel] Auto-remove comment failed:', err);
     }
     await saveScore({ ...contentScore, status: 'removed' }, context);
   }
+
+  console.log('[ModSentinel] CommentCreate handler complete');
 }
