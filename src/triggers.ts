@@ -48,8 +48,7 @@ export async function handlePostCreate(
 
   const isMod = await isModerator(authorName, subredditName, context);
   if (isMod) {
-    console.log(`[ModSentinel] Skipping — u/${authorName} is a moderator`);
-    return;
+    console.log(`[ModSentinel] u/${authorName} is a moderator — will score but skip auto-actions`);
   }
 
   const config = await getSubredditConfig(context);
@@ -85,6 +84,11 @@ export async function handlePostCreate(
 
   await saveScore(contentScore, context);
   console.log(`[ModSentinel] Saved score for ${contentId}`);
+
+  if (isMod) {
+    console.log('[ModSentinel] Mod post — skipping auto-actions');
+    return;
+  }
 
   if (scores.overall >= autoRemoveThreshold) {
     console.log(`[ModSentinel] Auto-removing post (score ${scores.overall} >= threshold ${autoRemoveThreshold})`);
