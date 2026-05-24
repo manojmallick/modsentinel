@@ -96,8 +96,8 @@ function QueueItem({
 
       {/* AI reasoning */}
       {item.geminiReasoning ? (
-        <hstack padding="small" backgroundColor="warning-background" cornerRadius="small">
-          <text size="xsmall" color="warning-plain" wrap>
+        <hstack padding="small" backgroundColor="#2D2500" cornerRadius="small">
+          <text size="xsmall" color="#F5A623" wrap>
             ⚠️ {item.geminiReasoning}
           </text>
         </hstack>

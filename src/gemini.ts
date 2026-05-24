@@ -15,7 +15,7 @@ const SAFE_DEFAULT: GeminiScore = { spam: 0, violation: 0, toxicity: 0, overall:
 
 function clamp(value: unknown): number {
   const n = typeof value === 'number' ? value : 0;
-  return Math.min(100, Math.max(0, n));
+  return Math.round(Math.min(100, Math.max(0, n)));
 }
 
 export async function scoreContent(
