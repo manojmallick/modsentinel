@@ -98,21 +98,37 @@ Devvit.addSchedulerJob({
   },
 });
 
-// ─── App Lifecycle: Schedule daily summary on install ─────────────────────────
+// ─── App Lifecycle: Schedule daily summary on install AND upgrade ─────────────
+// Runs on both first install and every re-upload so the cron is never lost.
+
+async function ensureDailySummaryScheduled(context: Pick<Devvit.Context, 'scheduler'>): Promise<void> {
+  try {
+    // Cancel any existing jobs with this name to avoid duplicates
+    const existing = await context.scheduler.listJobs();
+    for (const job of existing) {
+      if (job.name === 'daily-summary') {
+        await context.scheduler.cancelJob(job.id);
+      }
+    }
+    // Schedule fresh
+    await context.scheduler.runJob({
+      name: 'daily-summary',
+      cron: '0 9 * * *', // 9:00 AM UTC every day
+    });
+    console.log('[ModSentinel] Daily summary job (re)scheduled');
+  } catch (err) {
+    console.error('[ModSentinel] Failed to schedule daily summary:', err);
+  }
+}
 
 Devvit.addTrigger({
   event: 'AppInstall',
-  onEvent: async (_event, context) => {
-    try {
-      await context.scheduler.runJob({
-        name: 'daily-summary',
-        cron: '0 9 * * *', // 9:00 AM UTC every day
-      });
-      console.log('[ModSentinel] Daily summary job scheduled (9 AM UTC)');
-    } catch (err) {
-      console.error('[ModSentinel] Failed to schedule daily summary:', err);
-    }
-  },
+  onEvent: async (_event, context) => ensureDailySummaryScheduled(context),
+});
+
+Devvit.addTrigger({
+  event: 'AppUpgrade',
+  onEvent: async (_event, context) => ensureDailySummaryScheduled(context),
 });
 
 // ─── Triggers ────────────────────────────────────────────────────────────────
