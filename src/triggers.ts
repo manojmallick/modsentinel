@@ -8,7 +8,18 @@ import {
   recordViolation,
   isOnWatchlist,
 } from './kvStore.js';
-import type { ContentScore } from './types.js';
+import type { ContentScore, LiveScoreEvent } from './types.js';
+
+const REALTIME_CHANNEL = 'modsentinel:scores';
+
+/** Fire-and-forget push to all open dashboard windows. Never throws. */
+async function broadcastScore(event: LiveScoreEvent, context: TriggerContext): Promise<void> {
+  try {
+    await context.realtime.send(REALTIME_CHANNEL, event);
+  } catch (err) {
+    console.log('[ModSentinel] Realtime broadcast failed (non-fatal):', err);
+  }
+}
 
 const DEFAULT_RULES = ['Be respectful', 'No spam', 'Stay on topic'];
 
@@ -111,6 +122,12 @@ export async function handlePostCreate(
 
   await saveScore(contentScore, context);
   console.log(`[ModSentinel] Saved score for ${contentId}`);
+
+  // Push live update to all open dashboard windows
+  await broadcastScore(
+    { contentId, overall: scores.overall, contentType: 'post', authorName, autoRemoved: false },
+    context
+  );
 
   // Record this scoring event for reputation tracking
   await recordViolation(authorName, false, context);
@@ -261,6 +278,12 @@ export async function handleCommentCreate(
 
   await saveScore(contentScore, context);
   console.log(`[ModSentinel] Saved comment score for ${contentId}`);
+
+  // Push live update to all open dashboard windows
+  await broadcastScore(
+    { contentId, overall: scores.overall, contentType: 'comment', authorName, autoRemoved: false },
+    context
+  );
 
   // Record this scoring event
   await recordViolation(authorName, false, context);

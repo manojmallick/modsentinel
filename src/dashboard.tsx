@@ -1,6 +1,8 @@
-import { Devvit, useState, useAsync, useInterval } from '@devvit/public-api';
+import { Devvit, useState, useAsync, useInterval, useChannel } from '@devvit/public-api';
 import { getQueue, updateStatus, clearActioned, getWatchlist } from './kvStore.js';
-import type { ContentScore } from './types.js';
+import type { ContentScore, LiveScoreEvent } from './types.js';
+
+const REALTIME_CHANNEL = 'modsentinel:scores';
 
 type FilterMode = 'all' | 'critical' | 'pending' | 'shadow' | 'watched';
 
@@ -73,7 +75,7 @@ function QueueItem({
   onApprove: () => void | Promise<void>;
   onRemove: () => void | Promise<void>;
   onSpam: () => void | Promise<void>;
-  onNavigate: () => void | Promise<void>;
+  onNavigate: () => void;
 }) {
   const overallColor = scoreColor(item.scores.overall);
   const typeIcon = item.contentType === 'post' ? '📄' : '💬';
@@ -241,6 +243,23 @@ export function Dashboard(context: Devvit.Context): JSX.Element {
     spinnerTicker.stop();
   }
 
+  // ── Realtime live updates ─────────────────────────────────────────────────
+  const [newItemCount, setNewItemCount] = useState(0);
+  const [peakNewScore, setPeakNewScore] = useState(0);
+
+  const liveChannel = useChannel<LiveScoreEvent>({
+    name: REALTIME_CHANNEL,
+    onMessage(msg) {
+      setNewItemCount((c) => c + 1);
+      setPeakNewScore((s) => Math.max(s, msg.overall));
+    },
+  });
+
+  // Subscribe once mod status is confirmed — non-mods stay unsubscribed
+  if (isMod && !loading) {
+    liveChannel.subscribe();
+  }
+
   // Fetch queue + watchlist + verify mod status — re-runs whenever refreshKey changes
   useAsync(
     async () => {
@@ -356,8 +375,21 @@ export function Dashboard(context: Devvit.Context): JSX.Element {
     setStatusMsg('🚫 Marked as spam');
   }
 
-  async function handleNavigate(item: ContentScore): Promise<void> {
-    context.ui.navigateTo(item.url);
+  function handleNavigate(item: ContentScore): void {
+    // Always construct a canonical Reddit URL from the content ID so we never
+    // try to navigate to an external link (link-post `url` can be off-Reddit).
+    const bareId = item.contentId.replace(/^t[13]_/, '');
+    const redditUrl =
+      item.contentType === 'post'
+        ? `https://www.reddit.com/comments/${bareId}/`
+        : item.url; // comment URLs are already stored as reddit.com permalinks
+    try {
+      context.ui.navigateTo(redditUrl);
+    } catch {
+      // navigateTo is unsupported in some Devvit environments — fall back to
+      // copying the URL to the mod's clipboard via a toast they can tap/copy.
+      context.ui.showToast(redditUrl);
+    }
   }
 
   async function handleClearActioned(): Promise<void> {
@@ -581,17 +613,27 @@ export function Dashboard(context: Devvit.Context): JSX.Element {
             {showHelp ? '✕ Close' : '? Help'}
           </button>
 
-          {/* Refresh button */}
+          {/* Refresh button — lights up when realtime pushes arrive */}
           <button
             size="small"
-            appearance="bordered"
+            appearance={
+              newItemCount > 0
+                ? peakNewScore >= 80
+                  ? 'destructive'
+                  : 'primary'
+                : 'bordered'
+            }
             onPress={() => {
               setLoading(true);
               setShowHelp(false);
+              setNewItemCount(0);
+              setPeakNewScore(0);
               setRefreshKey(refreshKey + 1);
             }}
           >
-            ↻ Refresh
+            {newItemCount > 0
+              ? `↻ ${String(newItemCount)} new${peakNewScore >= 80 ? ` 🔴${String(peakNewScore)}` : ''}`
+              : '↻ Refresh'}
           </button>
         </hstack>
 

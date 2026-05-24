@@ -14,6 +14,7 @@ Devvit.configure({
   kvStore: true,
   http: true,
   media: false,
+  realtime: true,
 });
 
 // ─── App Settings ────────────────────────────────────────────────────────────

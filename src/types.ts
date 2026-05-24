@@ -29,6 +29,18 @@ export interface SubredditConfig {
   autoReplyOnRemoval: boolean;   // post mod comment explaining removal, default false
 }
 
+// ── Realtime push event (trigger → dashboard) ─────────────────────────────────
+// Must satisfy JSONObject (index signature required by Devvit realtime API).
+// All fields are JSON primitives so the constraint is safe to express inline.
+export interface LiveScoreEvent {
+  contentId: string;
+  overall: number;
+  contentType: string;   // 'post' | 'comment' — kept as string for JSONObject compat
+  authorName: string;
+  autoRemoved: boolean;
+  [key: string]: string | number | boolean | null;
+}
+
 // ── User Reputation ───────────────────────────────────────────────────────────
 export interface UserReputation {
   username: string;
