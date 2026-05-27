@@ -765,7 +765,7 @@ export function Dashboard(context: Devvit.Context): JSX.Element {
           const safePage = Math.min(page, totalPages - 1);
           const pageItems = filteredQueue.slice(safePage * PAGE_SIZE, (safePage + 1) * PAGE_SIZE);
           return (
-            <vstack gap="small" grow>
+            <vstack gap="small">
               {pageItems.map((item) => (
                 <QueueItem
                   key={item.contentId}
@@ -776,7 +776,6 @@ export function Dashboard(context: Devvit.Context): JSX.Element {
                   onNavigate={() => handleNavigate(item)}
                 />
               ))}
-              <spacer grow />
               {/* Pagination controls — only shown when there are multiple pages */}
               {totalPages > 1 ? (
                 <hstack alignment="center middle" gap="small">
