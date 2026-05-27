@@ -4,6 +4,10 @@
 
 Built for the **[Reddit Mod Tools & Migrated Apps Hackathon 2026](https://mod-tools-migration.devpost.com)** on [Devvit 0.12](https://developers.reddit.com).
 
+**Live demo:** [r/modsentinel_testing — ModSentinel Dashboard](https://www.reddit.com/r/modsentinel_testing/comments/1tm9nud/modsentinel_ai_mod_queue/)  
+**App page:** [developers.reddit.com/apps/modsentinel-ai](https://developers.reddit.com/apps/modsentinel-ai)  
+**Screenshots & demo:** [DEMO.md](https://github.com/manojmallick/modsentinel/blob/main/DEMO.md)
+
 ---
 
 ## The Problem
@@ -227,10 +231,10 @@ See [ARCHITECTURE.md](https://github.com/manojmallick/modsentinel/blob/main/ARCH
 
 | Layer | Technology |
 |-------|-----------|
-| Platform | [Devvit 0.12.24](https://developers.reddit.com) — triggers, KV store, custom posts, Reddit API, scheduler |
+| Platform | [Devvit 0.12.24](https://developers.reddit.com) — triggers, KV store, custom posts, Reddit API, scheduler, realtime channels |
 | AI | [Gemini 2.0 Flash](https://aistudio.google.com) — fast, free, 1M tokens/month |
 | Language | TypeScript 5.3 — strict mode, zero `any` in application code |
-| UI | Devvit Blocks — JSX-like layout rendered natively in Reddit clients |
+| UI | Devvit Blocks — JSX-like layout with pagination, rendered natively in Reddit clients (web + mobile) |
 
 ---
 

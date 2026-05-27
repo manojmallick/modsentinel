@@ -20,7 +20,8 @@ Reddit creates a Post or Comment
   PostCreate / CommentCreate trigger
           │
           ├─► isOnWatchlist(author)?
-          │         │YES → override score = 100, skip Gemini call
+          │         │YES → override score = 85 (flags+notifies, does NOT auto-remove)
+          │         │      skip Gemini call entirely (saves API quota)
           │         │NO  ─────────────────────────────┐
           │                                           │
           ├─► getUserReputation(author)               │
@@ -31,16 +32,24 @@ Reddit creates a Post or Comment
           │                                  returns { spam, violation,
           │                                            toxicity, overall,
           │                                            reasoning }
+          │                                  overall = max(
+          │                                    violation×0.5 + spam×0.3 + toxicity×0.2,
+          │                                    maxSingleScore×0.85 if maxSingle≥85
+          │                                  )
           │
           ├─► saveScore(ContentScore) → KV: modsentinel:queue:v1
           │       • Deduped by contentId
           │       • Max 200 items (oldest evicted)
           │       • Includes: autoRemoved?, authorViolations, authorIsWatched
+          │       • url = canonical Reddit URL (constructed, not from proto)
+          │
+          ├─► realtime.send(REALTIME_CHANNEL, LiveScoreEvent)
+          │       Live push to all open dashboard windows (non-fatal if fails)
           │
           ├─► recordViolation(author, isViolation=false)
           │       KV: modsentinel:rep:<username>
           │
-          └─► Auto-actions (mod posts only):
+          └─► Auto-actions (skipped for mod posts):
                   ├─► score ≥ autoRemoveThreshold (95)?
                   │       reddit.remove()
                   │       saveScore({ status: 'removed', autoRemoved: true })
@@ -64,12 +73,16 @@ Reddit creates a Post or Comment
                  │    ├─ getWatchlist()                     │
                  │    └─ compute healthScore                │
                  │                                          │
+                 │  Realtime subscription (live updates):   │
+                 │    useChannel(REALTIME_CHANNEL)          │
+                 │    → increments refreshKey on receive    │
+                 │                                          │
                  │  Render:                                 │
-                 │    Header: title | health | refresh      │
-                 │    Tabs: All | Critical | Pending |      │
-                 │          Shadow | Watched                │
+                 │    Header: title | health | ? | ↻        │
+                 │    Tabs: All N | 🔴 | ⏳ | 🤖 | 👁       │
                  │    Items: sorted by score desc,          │
                  │           pending first                  │
+                 │    Pagination: ← Prev  N/total  Next →   │
                  │    Actions: Approve | Remove | Spam | ↗  │
                  └─────────────────────────────────────────┘
 
@@ -112,19 +125,27 @@ Two handlers: `handlePostCreate` and `handleCommentCreate`. Both follow the same
 
 ```
 1. Extract author name from event proto
-2. Parallel fetch: [isOnWatchlist, getUserReputation, getSubredditConfig]
-3. Score content (Gemini or watchlist override)
-4. Build ContentScore with reputation snapshot
-5. saveScore → KV queue
-6. recordViolation(author, false)  [increment totalScored]
-7. If not a mod:
-     └─ overall ≥ autoRemoveThreshold → remove + recordViolation(true)
-          └─ autoReplyOnRemoval → submitComment(reasoning)
-     └─ overall ≥ autoFlairThreshold → setPostFlair
-     └─ overall ≥ notifyThreshold → sendPrivateMessage
+2. Check if author is a moderator (mod posts are scored but skip auto-actions)
+3. Parallel fetch: [isOnWatchlist, getUserReputation]
+4. getSubredditConfig (thresholds + rules)
+5. Score content (Gemini or watchlist override at 85)
+6. Construct canonical URL:
+     posts   → https://www.reddit.com/r/{sub}/comments/{id}/
+     comments → https://reddit.com{comment.permalink}
+7. Build ContentScore with reputation snapshot
+8. saveScore → KV queue
+9. realtime.send → live push to open dashboards
+10. recordViolation(author, false)  [increment totalScored]
+11. If not a mod:
+      └─ overall ≥ autoRemoveThreshold → remove + recordViolation(true)
+           └─ autoReplyOnRemoval → submitComment(reasoning)
+      └─ overall ≥ autoFlairThreshold → setPostFlair
+      └─ overall ≥ notifyThreshold → sendPrivateMessage
 ```
 
-**Watchlist override:** Watched users skip Gemini entirely and receive score `{100, 100, 100, 100}` — saves API quota and responds instantly.
+**Watchlist override:** Watched users skip Gemini entirely and receive score `{spam:85, violation:85, toxicity:0, overall:85}`. Score 85 is deliberately below the default auto-remove threshold (95) so watchlisted users are flagged for manual review without automatic removal — preventing false positive auto-removes for legitimate users who happen to be monitored.
+
+**URL construction:** `PostV2.url` in the Devvit proto is `undefined` for text/self-posts (only populated for link posts pointing to external URLs). The canonical Reddit URL is always constructed from subreddit name + post ID to ensure reliable deep-linking from the dashboard.
 
 ---
 
@@ -135,9 +156,19 @@ Single exported function: `scoreContent(content, type, rules, context)`.
 - Reads `geminiApiKey` from Devvit app settings
 - Constructs a structured JSON prompt with: content text, content type, subreddit rules
 - Parses the Gemini response into `GeminiScore`
+- **Recomputes `overall` independently** — does not trust Gemini's calculation
 - Returns `SAFE_DEFAULT = {0, 0, 0, 0, ''}` on any error (fail-safe, never throws)
 
-**Prompt strategy:** The model is instructed to output strict JSON with integer scores 0–100. Each dimension is independently scored. The `overall` field is `violation×0.5 + spam×0.3 + toxicity×0.2`. Reasoning is requested only for `overall > 50` to keep response sizes small.
+**Overall score formula:**
+```
+raw   = round(violation×0.5 + spam×0.3 + toxicity×0.2)
+floor = maxSingle >= 85 ? round(maxSingle × 0.85) : 0
+overall = min(100, max(raw, floor))
+```
+
+The floor prevents high-confidence single-dimension hits from being diluted. For example, Spam=95 + Violation=90 + Toxicity=0 would yield raw=73 (WARNING), but floor=round(95×0.85)=81, so overall=81 (CRITICAL).
+
+**Prompt strategy:** The model is instructed to output strict JSON with integer scores 0–100. Each dimension is independently scored. Reasoning is requested only for `overall > 50` to keep response sizes small.
 
 ---
 
@@ -174,10 +205,11 @@ A single-function Devvit custom post component rendered in Reddit's native block
 
 **State:**
 ```
-queueJson       string    '[]'     Serialized ContentScore[]
+queueJson       string    '[]'     Serialized ContentScore[] (JSONValue constraint)
 watchlistJson   string    '[]'     Serialized string[] (usernames)
-healthScore     number    100      % of queue items scoring < 40
+healthScore     number    100      % of queue items scoring < 40 or mod-approved
 filter          string    'all'    Active tab: all|critical|pending|shadow|watched
+page            number    0        Current pagination page (0-indexed)
 loading         boolean   true     Drives loading indicator
 refreshKey      number    0        Incrementing to re-trigger useAsync
 lastUpdated     number    0        Timestamp of last successful fetch
@@ -190,7 +222,21 @@ spinnerFrame    number    0        Animation frame for loading spinner
 
 **Mod gate:** On every load, `useAsync` calls `getCurrentUser()` + `getModerators()` server-side. If the viewer is not a mod, the async returns `isMod: false` and the component renders a lock screen — the queue data is never sent to the client.
 
+**Pagination:** Devvit Blocks has no native scroll or overflow support. The dashboard uses client-side pagination with `PAGE_SIZE = 2` items per page (chosen so both items + the pagination bar fit in the desktop viewport; mobile shows the same). Filter tab changes reset `page` to 0. The pagination bar (`← Prev  N / total  Next →`) only renders when `totalPages > 1`.
+
+**Live updates:** `useChannel(REALTIME_CHANNEL)` subscribes to the `modsentinel_scores` realtime channel. When a new score is broadcast by a trigger, the channel callback increments `refreshKey`, causing `useAsync` to re-fetch the queue — the dashboard updates automatically without manual refresh.
+
 **Loading animation:** `useInterval` at 100 ms cycles `spinnerFrame` through 10 braille spinner characters (`⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏`). The animation runs only while `loading === true`; on load completion the interval is stopped, preventing infinite re-render loops.
+
+**Colors:** Devvit only supports `neutral-background*` named color tokens. All other named tokens (`green-background`, `red-background`, `orangered-background`) throw a runtime parse error. All score colors and status badge backgrounds use hex codes:
+
+| Semantic | Hex | Used for |
+|----------|-----|---------|
+| Critical (red) | `#7F1D1D` | Score ≥ 80 background |
+| Warning (amber) | `#BF360C` / `#C0510B` | Score 60–79 background |
+| Low risk (green) | `#1B5E20` | Score 0–39 background |
+
+**Navigation (`↗ View`):** `context.ui.navigateTo(url)` is only implemented in the Reddit mobile app. On Reddit web browser, it throws `TypeError: not a function`. The handler wraps the call in try/catch — on mobile it navigates directly, on web it falls back to `context.ui.showToast(url)` displaying the full URL.
 
 **Help panel:** A `showHelp` state toggle replaces the queue with an in-app reference guide covering: score color coding, filter tabs, action buttons, auto-action thresholds, watchlist, shadow queue, and daily reports.
 
@@ -205,13 +251,13 @@ ContentScore {
   authorName: string
   title?: string             // posts only
   body: string
-  url: string
+  url: string                // canonical Reddit URL (always absolute https://)
   createdAt: number          // Unix ms
   scores: {
     spam: number             // 0-100
     violation: number        // 0-100
     toxicity: number         // 0-100
-    overall: number          // 0-100, weighted
+    overall: number          // 0-100, weighted with floor
   }
   status: 'pending'|'approved'|'removed'|'spam'
   geminiReasoning: string    // empty string if overall < 50
@@ -236,6 +282,14 @@ SubredditConfig {
   notifyThreshold: number       // default 90
   autoReplyOnRemoval: boolean   // default false
 }
+
+LiveScoreEvent {
+  contentId: string
+  overall: number
+  contentType: 'post'|'comment'
+  authorName: string
+  autoRemoved: boolean
+}
 ```
 
 ---
@@ -251,14 +305,33 @@ User reputation (`authorViolations`, `authorIsWatched`) is embedded in `ContentS
 ### 3. KVContext duck-typing
 Both `TriggerContext` and `Devvit.Context` expose `kvStore` but with incompatible TypeScript generics. The shared `KVContext` interface uses `get(key): Promise<any>` to satisfy both call sites without fighting Devvit's `JSONValue` type constraints.
 
-### 4. Watchlist short-circuit
-Watched users skip the Gemini API call entirely. This is important for two reasons: (a) it responds instantly regardless of API latency, (b) it preserves free-tier quota for unscored content.
+### 4. Watchlist short-circuit at 85
+Watched users skip the Gemini API call entirely. Score 85 is chosen specifically to be above the flair threshold (80) and mod-mail threshold (90 — close enough to alert mods) but **below** the default auto-remove threshold (95). This means watchlisted users are always flagged for human review without risking false positive auto-removals for legitimate content.
 
 ### 5. Scheduler context typing
 `Devvit.addSchedulerJob`'s `onRun` callback receives `JobContext = Omit<Devvit.Context, 'ui'|'dimensions'|'modLog'|'uiEnvironment'>`. Since `JobContext` is not re-exported from `@devvit/public-api`, we define a local alias `type SchedulerContext = Omit<Devvit.Context, 'ui'|'dimensions'|'modLog'|'uiEnvironment'>` for the `sendDailySummary` function parameter.
 
 ### 6. Idempotent interval start
 The spinner interval calls `spinnerTicker.start()` each render while `loading === true` and `spinnerTicker.stop()` when `loading === false`. Devvit's `useInterval` is designed to be idempotent — calling `start()` on an already-running interval is a no-op.
+
+### 7. Overall score floor prevents dilution
+The weighted formula `violation×0.5 + spam×0.3 + toxicity×0.2` can under-report risk when one dimension is extremely high but others are zero (e.g. pure spam with no toxicity). The floor `max(raw, maxSingle × 0.85)` ensures that a content item with any single dimension ≥ 85 scores at least 72/100 overall, guaranteeing it surfaces as WARNING or CRITICAL in the queue.
+
+### 8. Pagination over scroll
+Devvit Blocks has no scroll or overflow primitives — the entire component must fit within a fixed viewport. Pagination (← Prev / Next →) is the only viable solution for queues longer than the viewport. PAGE_SIZE=2 was calibrated for the desktop Reddit web layout, which has a shorter effective height than the mobile app.
+
+---
+
+## Known Platform Limitations
+
+| Limitation | Impact | Mitigation |
+|-----------|--------|-----------|
+| `context.ui.navigateTo` not available in Reddit web browser | "↗ View" button cannot deep-link on desktop web | Falls back to `showToast(url)` with full URL; works correctly on mobile app |
+| Only `neutral-background*` named color tokens valid | Cannot use `green-background`, `red-background` etc. | All score colors use hex codes (`#1B5E20`, `#7F1D1D`, `#BF360C`) |
+| No native scroll in Devvit Blocks | Cannot show arbitrarily long lists | Pagination with PAGE_SIZE=2 |
+| `PostV2.url` undefined for text posts | Cannot store post URL from event proto | URL constructed from subreddit name + post ID in trigger |
+| `useState` values must be `JSONValue` | Cannot store typed objects in state directly | Queue serialized as JSON string, deserialized on each render |
+| `useAsync` setState only in `finally` | Cannot call setState mid-async | All state mutations happen in the `finally` callback |
 
 ---
 
@@ -267,8 +340,11 @@ The spinner interval calls `spinnerTicker.start()` each render while `loading ==
 | Constraint | Value | Reason |
 |-----------|-------|--------|
 | Queue size | 200 items | KV value size limit (~256 KB) |
+| Items per page | 2 | Desktop viewport height; pagination bar must be visible |
 | Gemini free tier | ~1 M tokens/month | ~5 000 items at ~200 tokens each |
 | Scheduler minimum | 100 ms | `useInterval` minimum delay |
-| Trigger latency | < 500 ms typical | Gemini Flash p50 latency |
+| Trigger latency | < 3 s typical | Gemini Flash p50 latency |
 | KV reads per trigger | 4 | watchlist + rep + config + queue |
-| KV writes per trigger | 2 | queue save + rep update |
+| KV writes per trigger | 2–3 | queue save + rep update (+ 2nd queue save if auto-removed) |
+| Watchlist flag score | 85 | Above flair/notify threshold, below auto-remove threshold |
+| Auto-remove default | 95 | High confidence only; reduces false positives |
