@@ -227,7 +227,7 @@ export function Dashboard(context: Devvit.Context): JSX.Element {
   const [spinnerFrame, setSpinnerFrame] = useState(0);
   const [page, setPage] = useState(0);
 
-  const PAGE_SIZE = 3;
+  const PAGE_SIZE = 2;
 
   // ── Loading animation ────────────────────────────────────────────────────
   const SPINNER = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
