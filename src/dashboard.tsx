@@ -90,11 +90,11 @@ function QueueItem({
       border="thin"
       borderColor={
         isWatched
-          ? 'red-background'
+          ? '#7F1D1D'
           : isActioned
           ? 'transparent'
           : overallColor === '#FF4D6D'
-          ? 'red-background'
+          ? '#7F1D1D'
           : 'neutral-border'
       }
     >
@@ -125,7 +125,7 @@ function QueueItem({
 
         {/* Watchlist badge */}
         {isWatched ? (
-          <hstack padding="xsmall" backgroundColor="red-background" cornerRadius="full">
+          <hstack padding="xsmall" backgroundColor="#7F1D1D" cornerRadius="full">
             <text size="xsmall" weight="bold" color="white">
               👁 WATCHED
             </text>
@@ -609,7 +609,7 @@ export function Dashboard(context: Devvit.Context): JSX.Element {
           <text size="large" weight="bold">🛡️ ModSentinel</text>
 
           {criticalCount > 0 ? (
-            <hstack padding="xsmall" backgroundColor="red-background" cornerRadius="full">
+            <hstack padding="xsmall" backgroundColor="#7F1D1D" cornerRadius="full">
               <text size="xsmall" weight="bold" color="white">
                 {String(criticalCount)} critical
               </text>
