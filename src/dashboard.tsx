@@ -134,7 +134,7 @@ function QueueItem({
 
         {/* Repeat offender badge */}
         {violations > 0 && !isWatched ? (
-          <hstack padding="xsmall" backgroundColor="orangered-background" cornerRadius="full">
+          <hstack padding="xsmall" backgroundColor="#C0510B" cornerRadius="full">
             <text size="xsmall" weight="bold" color="white">
               ⚠️ {String(violations)} prior
             </text>
@@ -621,7 +621,7 @@ export function Dashboard(context: Devvit.Context): JSX.Element {
           {/* Community health score */}
           <hstack
             padding="xsmall"
-            backgroundColor={healthScore >= 80 ? 'green-background' : 'orangered-background'}
+            backgroundColor={healthScore >= 80 ? '#1B5E20' : '#BF360C'}
             cornerRadius="full"
           >
             <text size="xsmall" weight="bold" color="white">
