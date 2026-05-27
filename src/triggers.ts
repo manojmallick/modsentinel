@@ -105,13 +105,17 @@ export async function handlePostCreate(
   }
 
   const contentId = toPostId(post.id);
+  // For self/text posts, post.url is undefined in the proto — build it from ID.
+  // For link posts, post.url is the external link; store the Reddit post URL instead.
+  const postRedditUrl = `https://www.reddit.com/r/${subredditName}/comments/${post.id}/`;
+
   const contentScore: ContentScore = {
     contentId,
     contentType: 'post',
     authorName,
     title: post.title,
     body: post.selftext ?? '',
-    url: post.url,
+    url: postRedditUrl,
     createdAt: Date.now(),
     scores,
     status: 'pending',

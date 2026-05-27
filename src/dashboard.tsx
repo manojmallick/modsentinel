@@ -20,11 +20,6 @@ function scoreLabel(score: number): string {
   return 'CLEAN';
 }
 
-function healthColor(pct: number): string {
-  if (pct >= 80) return '#27AE60';
-  if (pct >= 60) return '#F5A623';
-  return '#FF4D6D';
-}
 
 function formatTimeAgo(timestamp: number): string {
   const diffMin = Math.floor((Date.now() - timestamp) / 60000);
@@ -230,6 +225,9 @@ export function Dashboard(context: Devvit.Context): JSX.Element {
   const [isMod, setIsMod] = useState(false);
   const [showHelp, setShowHelp] = useState(false);
   const [spinnerFrame, setSpinnerFrame] = useState(0);
+  const [page, setPage] = useState(0);
+
+  const PAGE_SIZE = 3;
 
   // ── Loading animation ────────────────────────────────────────────────────
   const SPINNER = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
@@ -382,18 +380,39 @@ export function Dashboard(context: Devvit.Context): JSX.Element {
   }
 
   function handleNavigate(item: ContentScore): void {
-    // Always construct a canonical Reddit URL from the content ID so we never
-    // try to navigate to an external link (link-post `url` can be off-Reddit).
     const bareId = item.contentId.replace(/^t[13]_/, '');
-    const redditUrl =
-      item.contentType === 'post'
-        ? `https://www.reddit.com/comments/${bareId}/`
-        : item.url; // comment URLs are already stored as reddit.com permalinks
+
+    // Always produce a full absolute https://www.reddit.com URL.
+    // PostV2.url for self-posts is a relative path like /r/sub/comments/id/slug/
+    // Comments store a full permalink in triggers.ts.
+    let redditUrl: string;
+    if (item.contentType === 'comment') {
+      redditUrl = item.url.startsWith('http')
+        ? item.url
+        : `https://www.reddit.com${item.url}`;
+    } else {
+      // Check if stored URL is a Reddit post URL (relative or absolute)
+      const isRedditPath =
+        item.url.startsWith('/r/') ||
+        item.url.includes('reddit.com/r/') ||
+        item.url.includes('/comments/');
+
+      if (isRedditPath) {
+        // Ensure it's absolute
+        redditUrl = item.url.startsWith('http')
+          ? item.url
+          : `https://www.reddit.com${item.url}`;
+      } else {
+        // Link post — use content ID to build canonical post URL
+        redditUrl = `https://www.reddit.com/comments/${bareId}/`;
+      }
+    }
+
+    // navigateTo works on Reddit mobile app but throws on web browser (known
+    // Devvit limitation). Fall back to a toast with the full URL to copy+open.
     try {
       context.ui.navigateTo(redditUrl);
     } catch {
-      // navigateTo is unsupported in some Devvit environments — fall back to
-      // copying the URL to the mod's clipboard via a toast they can tap/copy.
       context.ui.showToast(redditUrl);
     }
   }
@@ -437,10 +456,10 @@ export function Dashboard(context: Devvit.Context): JSX.Element {
   const filters: FilterMode[] = ['all', 'critical', 'pending', 'shadow', 'watched'];
   const filterLabels: Record<FilterMode, string> = {
     all: 'All',
-    critical: '🔴 Critical',
-    pending: 'Pending',
-    shadow: '🤖 Shadow',
-    watched: '👁 Watched',
+    critical: '🔴',
+    pending: '⏳',
+    shadow: '🤖',
+    watched: '👁',
   };
 
   const updatedText = lastUpdated > 0 ? `Updated ${formatTimeAgo(lastUpdated)}` : 'Loading…';
@@ -587,7 +606,7 @@ export function Dashboard(context: Devvit.Context): JSX.Element {
 
         {/* ── Header ──────────────────────────────────────────────────────── */}
         <hstack alignment="start middle" gap="small">
-          <text size="xlarge" weight="bold">🛡️ ModSentinel</text>
+          <text size="large" weight="bold">🛡️ ModSentinel</text>
 
           {criticalCount > 0 ? (
             <hstack padding="xsmall" backgroundColor="red-background" cornerRadius="full">
@@ -606,7 +625,7 @@ export function Dashboard(context: Devvit.Context): JSX.Element {
             cornerRadius="full"
           >
             <text size="xsmall" weight="bold" color="white">
-              🏥 {String(healthScore)}% healthy
+              🏥 {String(healthScore)}%
             </text>
           </hstack>
 
@@ -616,10 +635,10 @@ export function Dashboard(context: Devvit.Context): JSX.Element {
             appearance={showHelp ? 'primary' : 'bordered'}
             onPress={() => setShowHelp(!showHelp)}
           >
-            {showHelp ? '✕ Close' : '? Help'}
+            {showHelp ? '✕' : '?'}
           </button>
 
-          {/* Refresh button — lights up when realtime pushes arrive */}
+          {/* Refresh button */}
           <button
             size="small"
             appearance={
@@ -638,8 +657,8 @@ export function Dashboard(context: Devvit.Context): JSX.Element {
             }}
           >
             {newItemCount > 0
-              ? `↻ ${String(newItemCount)} new${peakNewScore >= 80 ? ` 🔴${String(peakNewScore)}` : ''}`
-              : '↻ Refresh'}
+              ? `↻ ${String(newItemCount)}${peakNewScore >= 80 ? ' 🔴' : ''}`
+              : '↻'}
           </button>
         </hstack>
 
@@ -667,7 +686,7 @@ export function Dashboard(context: Devvit.Context): JSX.Element {
               key={f}
               size="small"
               appearance={filter === f ? 'primary' : 'secondary'}
-              onPress={() => setFilter(f)}
+              onPress={() => { setFilter(f); setPage(0); }}
             >
               {`${filterLabels[f]} ${counts[f]}`}
             </button>
@@ -718,13 +737,7 @@ export function Dashboard(context: Devvit.Context): JSX.Element {
         ) : filteredQueue.length === 0 ? (
           <vstack alignment="center middle" grow gap="small">
             <text size="xxlarge">
-              {filter === 'shadow'
-                ? '🤖'
-                : filter === 'watched'
-                ? '👁'
-                : filter === 'critical'
-                ? '✅'
-                : '✅'}
+              {filter === 'shadow' ? '🤖' : filter === 'watched' ? '👁' : '✅'}
             </text>
             <text weight="bold">
               {filter === 'shadow'
@@ -747,20 +760,50 @@ export function Dashboard(context: Devvit.Context): JSX.Element {
                 : 'New posts and comments are scored automatically'}
             </text>
           </vstack>
-        ) : (
-          <vstack gap="small" grow>
-            {filteredQueue.map((item) => (
-              <QueueItem
-                key={item.contentId}
-                item={item}
-                onApprove={() => handleApprove(item)}
-                onRemove={() => handleRemove(item)}
-                onSpam={() => handleSpam(item)}
-                onNavigate={() => handleNavigate(item)}
-              />
-            ))}
-          </vstack>
-        )}
+        ) : (() => {
+          const totalPages = Math.ceil(filteredQueue.length / PAGE_SIZE);
+          const safePage = Math.min(page, totalPages - 1);
+          const pageItems = filteredQueue.slice(safePage * PAGE_SIZE, (safePage + 1) * PAGE_SIZE);
+          return (
+            <vstack gap="small" grow>
+              {pageItems.map((item) => (
+                <QueueItem
+                  key={item.contentId}
+                  item={item}
+                  onApprove={() => handleApprove(item)}
+                  onRemove={() => handleRemove(item)}
+                  onSpam={() => handleSpam(item)}
+                  onNavigate={() => handleNavigate(item)}
+                />
+              ))}
+              <spacer grow />
+              {/* Pagination controls — only shown when there are multiple pages */}
+              {totalPages > 1 ? (
+                <hstack alignment="center middle" gap="small">
+                  <button
+                    size="small"
+                    appearance="bordered"
+                    onPress={() => setPage(Math.max(0, safePage - 1))}
+                    disabled={safePage === 0}
+                  >
+                    ← Prev
+                  </button>
+                  <text size="xsmall" color="secondary-plain">
+                    {String(safePage + 1)} / {String(totalPages)}
+                  </text>
+                  <button
+                    size="small"
+                    appearance="bordered"
+                    onPress={() => setPage(Math.min(totalPages - 1, safePage + 1))}
+                    disabled={safePage >= totalPages - 1}
+                  >
+                    Next →
+                  </button>
+                </hstack>
+              ) : null}
+            </vstack>
+          );
+        })()}
 
         {/* ── Footer ──────────────────────────────────────────────────────── */}
         <hstack alignment="center" gap="small">

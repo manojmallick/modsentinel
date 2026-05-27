@@ -88,11 +88,28 @@ IMPORTANT: Return ONLY the JSON object. No markdown. No code blocks. No explanat
   try {
     const cleaned = rawText.trim().replace(/^```json?\n?/, '').replace(/\n?```$/, '');
     const scores = JSON.parse(cleaned) as Record<string, unknown>;
+
+    const spam = clamp(scores.spam);
+    const violation = clamp(scores.violation);
+    const toxicity = clamp(scores.toxicity);
+
+    // Compute overall ourselves — don't trust Gemini's calculation.
+    // Base: violation×0.5 + spam×0.3 + toxicity×0.2
+    const raw = Math.round((violation * 0.5) + (spam * 0.3) + (toxicity * 0.2));
+
+    // Floor: if any single dimension hits 85+ (high-confidence signal),
+    // the overall risk is at least 85% of that score.
+    // Rationale: Spam=95 means 95% confidence it's spam — overall should be ≥ 80.
+    const maxSingle = Math.max(spam, violation, toxicity);
+    const floor = maxSingle >= 85 ? Math.round(maxSingle * 0.85) : 0;
+
+    const overall = Math.min(100, Math.max(raw, floor));
+
     return {
-      spam: clamp(scores.spam),
-      violation: clamp(scores.violation),
-      toxicity: clamp(scores.toxicity),
-      overall: clamp(scores.overall),
+      spam,
+      violation,
+      toxicity,
+      overall,
       reasoning: typeof scores.reasoning === 'string' ? scores.reasoning : '',
     };
   } catch {
