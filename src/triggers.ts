@@ -83,13 +83,15 @@ export async function handlePostCreate(
   // ── Score content (or override for watchlisted users) ────────────────────
   let scores;
   if (watched) {
-    console.log(`[ModSentinel] u/${authorName} is on watchlist — overriding score to 100`);
+    // Watchlisted users: score 85 — triggers flair + mod-mail but NOT auto-remove
+    // (default auto-remove threshold is 95). Mods review manually from dashboard.
+    console.log(`[ModSentinel] u/${authorName} is on watchlist — flagging at 85`);
     scores = {
-      spam: 100,
-      violation: 100,
-      toxicity: 100,
-      overall: 100,
-      reasoning: `👁️ u/${authorName} is on the moderator watchlist — flagged for immediate review`,
+      spam: 85,
+      violation: 85,
+      toxicity: 0,
+      overall: 85,
+      reasoning: `👁️ u/${authorName} is on the moderator watchlist — flagged for review`,
     };
   } else {
     console.log('[ModSentinel] Calling Gemini API to score post...');
@@ -248,13 +250,13 @@ export async function handleCommentCreate(
   // ── Score content ─────────────────────────────────────────────────────────
   let scores;
   if (watched) {
-    console.log(`[ModSentinel] u/${authorName} is on watchlist — overriding score to 100`);
+    console.log(`[ModSentinel] u/${authorName} is on watchlist — flagging at 85`);
     scores = {
-      spam: 100,
-      violation: 100,
-      toxicity: 100,
-      overall: 100,
-      reasoning: `👁️ u/${authorName} is on the moderator watchlist — flagged for immediate review`,
+      spam: 85,
+      violation: 85,
+      toxicity: 0,
+      overall: 85,
+      reasoning: `👁️ u/${authorName} is on the moderator watchlist — flagged for review`,
     };
   } else {
     console.log('[ModSentinel] Calling Gemini API to score comment...');
