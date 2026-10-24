@@ -203,6 +203,19 @@ Right-clicking any post or comment in your subreddit exposes six ModSentinel act
 
 ---
 
+## Development Scripts
+
+For working on the Devvit app itself (see `package.json`):
+
+| Command | What it does |
+|---|---|
+| `npm run build` | `devvit build` |
+| `npm run upload` | `devvit upload`: upload a new app version to Reddit |
+| `npm run playtest` | `devvit playtest r/modsentinel_testing`: live-test on the test subreddit (change the name to your own subreddit) |
+| `npm run publish` | `devvit publish`: submit the app for review/publication |
+| `npm run lint` | ESLint on `src` |
+| `npm run typecheck` | `tsc --noEmit` |
+
 ## Project Structure
 
 ```
